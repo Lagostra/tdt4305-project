@@ -131,3 +131,6 @@ dmypy.json
 
 # Data files
 data/
+
+# Spark files
+metastore_db/
