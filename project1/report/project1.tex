@@ -1,0 +1,89 @@
+\documentclass[a4paper]{article}
+\usepackage[margin=80pt]{geometry}
+
+\title{TDT4305 - Project 1}
+\author{Eivind Lie Andreassen}
+
+\begin{document}
+
+\maketitle
+
+\section{Introduction}
+The code is provided in two versions: as Jupyter Notebooks, which was the way I originally wrote them, and as exported Python files. The RDD tasks are contained in one file, and the DataFrame tasks in another. Exported solutions are available in CSV format in the \emph{solutions} folder, with a single file for each subtask (or multiple files for a subtask where applicable).
+
+\section{Explanation of Solutions}
+
+\subsection{Task 1}
+
+\subsubsection{Subtask a}
+Each data file is loaded into a separate RDD using the SparkContext \emph{textFile} method. This loads each line of the file into a row in the RDD. The rows are then mapped, with each row being splitted on the relevant delimiter, with also some cleaning of quotes being applied. The header rows are also filtered out for each RDD.
+
+With each data file loaded as an RDD, the row count for each can be found by simply calling the \emph{count} function on each RDD.
+
+
+\subsection{Task 2}
+
+\subsubsection{Subtask a}
+There is no single data file containing information about users. However, two data files contain user IDs: the \emph{friendships} and \emph{reviews} data files. I map out the user IDs from each of these RDDs, and take the union of the resulting RDDs before using the \emph{distinct} function to filter out any duplicates, and the \emph{count} function to count the number of (now unique) user IDs.
+
+Note: a test showed that all users were indeed contained in the \emph{friendships} data file, but the nature of the file does not allow us to make this assumption -- there may exist users without friend, but who have written reviews. Taking the union is therefore safer.
+
+\subsubsection{Subtask b}
+We are looking for the average length across all reviews. I therefore start by applying a map that extracts the length of each single review. The average length can then be found using the RDD \emph{mean} function.
+
+\subsubsection{Subtask c}
+I start with the \emph{reviews} RDD, and apply a mapping so that I get a paired RDD with the ID of the reviewed business as key, and simply a 1 as value. By using the \emph{reduceByKey} function, I sum up all the 1's for each unique business ID, giving us a count of reviews for each business. I then sort the RDD by counts in descending order, and map away the counts. I use \emph{zipWithIndex} combined with \emph{filter} to filter out the top 10 businesses, use \emph{coalesce} to (efficiently) repartition the data to a single node, and finally saveAsTextFile to save the result.
+
+\subsubsection{Subtask d}
+The structure of the solution is similar to the previous task. I begin by creating a paired RDD with year as key, and 1 as value for each review. Note that I need to extract the year from the provided timestamp, but Python provides convenient functionality for this. I then use \emph{reduceByKey} as above to produce counts. Finally, I save the result to file in a similar manner as above.
+
+\subsubsection{Subtask e}
+I begin by applying a map that extracts the timestamp for each review. I then sort the review in ascending and descending order and take the first element to get the timestamp of the first and last review, respectively. For easier reading, I apply some formatting to the timestamps before saving them to file.
+
+\subsubsection{Subtask f}
+This task must be divided into several steps. Firstly, the data used in the calculation must be identified. In this case, it is the count of reviews and the average length of review for each user, which is not directly available. I therefore start out by calculating these attributes.
+
+In order to achieve this, I initially apply a mapping to get a paired RDD with user ID as key, and the length of the review as value. I then use \emph{aggregateByKey} to simultaneously produce the count of reviews and sum of review lengths for each user. A new mapping is then applied in order to convert this into the count of reviews and average review length by each user, by simply dividing the total length by review count.
+
+Next, I calculate the average counts and average review length for all users. I do this simulatenously using \emph{aggregate}, in a manner similar as above (but this time working on all rows instead of rows with a given key).
+
+I now have everything a need to do the final calculation. The formula for the PCC consists of three sums across all users. I apply a mapping to the previously produced RDD with counts and average lengths for each user, creating a row with the value for each of these sums for each user. I then use reduce to calculate the sums themselves. Finally, I use the results of this calculation to calculate the final PCC score.
+
+
+\subsection{Task 3}
+
+\subsubsection{Subtask a}
+The structure of the solution should be well known by now. I begin with creating a paired RDD containing the name of the city as key, and the rating and a 1 as value. I then use reduceByKey to sum over both elements of the value, producing sum of ratings and count of businesses for each city. I then apply a mapping dividing the sum by the count, resulting in the average rating for each city. I sort by city name for good measure, coalesce to a single node, and save to file.
+
+
+\subsubsection{Subtask b}
+A complicating factor here is that there may be multiple categories for each business. This is solved by applying a \emph{flatMap} that splits the category names. This results in an RDD containing a single category on each row. I then apply the now well-known mapping into a paired RDD with category name as key and a 1 as value, at the same time making sure to strip away any leading or trailing whitespace. Counts are produced by summing with \emph{reduceByKey}, and the RDD is sorted by counts in descending order. Using \emph{zipWithIndex} and \emph{filter}, the top 10 results are filtered out, and then saved to file.
+
+\subsubsection{Subtask c}
+This is once more a calculation of average, but this time with two averages calculated simulatenously. First, I map to a paired RDD with zip code as key, and a tuple with a single 1 plus latitude and longitude as value. I then sum over each element of these tuples using \emph{reduceByKey}, and apply a mapping that divides latitude and longitude by number of businesses to calculate centroids. Finally, the result is mapped to CSV format and dumped to file.
+
+
+\subsection{Task 4}
+
+\subsubsection{Subtask a}
+Once more, this involves a calculation of counts, but this time two types of counts. I begin with using \emph{flatMap} to produce a paired RDD that has user ID as key, and a tuple where the first element signifies in degree, and the last element out degree. Initially, this tuple will be (1, 0) if the user is the destination, and (0, 1) if the user is the source. Using \emph{reduceByKey}, I sum over these tuples, producing in and out degrees for each user. I then sort in descending order, \emph{zipWithIndex} and \emph{filter} to find top users measured by in and out degrees. 
+
+\subsubsection{Subtask b}
+The means are easily calculated using the built in \emph{mean} function. For finding medians, I use \emph{zipWithIndex} combined with a map that reverses the order of each tuple to produce an RDD that can be indexed into. I then calculate the mid point, and use \emph{lookup} to find the element at the midpoint. If there are two mid elements (i.e. the total length is even), I calculate the average of the two.
+
+
+\subsection{Task 5}
+I use the \emph{spark.read} API, setting the correct delimiter for each data file, and signifying that there are header rows available in all files. This ensures that DataFrames are correctly loaded, with column names being set automatically.
+
+I then register each DataFrame as an SQL view by calling \emph{createTempView}. After this is done, the DataFrames may be accessed as views when using Spark SQL by referencing the provided view name.
+
+
+\subsection{Task 6}
+
+\subsubsection{Subtask a and b}
+I use Spark SQL along with a regular SQL inner join to produce the described table. I also immediately register it as a view by calling \emph{createTempView}.
+
+\subsubsection{Subtask c}
+Again, this is a simple query if one is familiar with SQL. I run a SELECT on the previously registered \emph{reviews} view, grouping by user\_id. I select the user\_id and row count for each group, and sort by row counts in descending order. Finally, I use LIMIT to take the top $20$ rows, yielding the users that have written the most reviews. I save the result as a CSV file using the DataFrame \emph{write} API.
+
+\end{document}
