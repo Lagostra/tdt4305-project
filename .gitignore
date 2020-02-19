@@ -134,3 +134,6 @@ data/
 
 # Spark files
 metastore_db/
+
+# Solution files
+*/solutions/
