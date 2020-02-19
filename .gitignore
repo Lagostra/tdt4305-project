@@ -144,4 +144,4 @@ metastore_db/
 *.fdb_latexmk
 *.fls
 *.synctex.gz
-*/project1.pdf
+*project1.pdf
