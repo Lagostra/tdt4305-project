@@ -137,3 +137,11 @@ metastore_db/
 
 # Solution files
 */solutions/
+
+
+# LaTeX files
+*.aux
+*.fdb_latexmk
+*.fls
+*.synctex.gz
+*/project1.pdf
