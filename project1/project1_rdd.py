@@ -5,6 +5,7 @@
 
 # %%
 from datetime import datetime
+from base64 import b64decode
 
 # %% [markdown]
 # ## Loading data files
@@ -72,7 +73,11 @@ with open('solutions/task2a.csv', 'w') as f:
 # ### b) Average numbers of characters in a review
 
 # %%
-avg_characters_in_review = reviews.map(lambda row: len(row[3])).mean()
+avg_characters_in_review = reviews.map(lambda row: len(b64decode(row[3]).decode('utf8'))).mean()
+
+
+# %%
+avg_characters_in_review
 
 
 # %%
@@ -133,7 +138,7 @@ with open('solutions/task2e.csv', 'w') as f:
 # ### f) Pearson Correlation Coefficient
 
 # %%
-count_and_length = reviews.map(lambda row: (row[1], len(row[3])))     .aggregateByKey((0, 0), lambda x, y: (x[0] + 1, x[1] + y), lambda x, y: (x[0] + y[0], x[1] + y[1]))     .map(lambda row: (row[0], row[1][0], row[1][1] / row[1][0]))
+count_and_length = reviews.map(lambda row: (row[1], len(b64decode(row[3]).decode('utf8'))))     .aggregateByKey((0, 0), lambda x, y: (x[0] + 1, x[1] + y), lambda x, y: (x[0] + y[0], x[1] + y[1]))     .map(lambda row: (row[0], row[1][0], row[1][1] / row[1][0]))
 
 
 # %%

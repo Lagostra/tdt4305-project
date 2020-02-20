@@ -29,7 +29,7 @@ There is no single data file containing information about users. However, two da
 Note: a test showed that all users were indeed contained in the \emph{friendships} data file, but the nature of the file does not allow us to make this assumption -- there may exist users without friend, but who have written reviews. Taking the union is therefore safer.
 
 \subsubsection{Subtask b}
-We are looking for the average length across all reviews. I therefore start by applying a map that extracts the length of each single review. The average length can then be found using the RDD \emph{mean} function.
+We are looking for the average length across all reviews. I therefore start by applying a map that extracts the length of each single review, making sure to decode from base64 to utf8. The average length can then be found using the RDD \emph{mean} function.
 
 \subsubsection{Subtask c}
 I start with the \emph{reviews} RDD, and apply a mapping so that I get a paired RDD with the ID of the reviewed business as key, and simply a 1 as value. By using the \emph{reduceByKey} function, I sum up all the 1's for each unique business ID, giving us a count of reviews for each business. I then sort the RDD by counts in descending order, and map away the counts. I use \emph{zipWithIndex} combined with \emph{filter} to filter out the top 10 businesses, use \emph{coalesce} to (efficiently) repartition the data to a single node, and finally saveAsTextFile to save the result.
@@ -43,7 +43,7 @@ I begin by applying a map that extracts the timestamp for each review. I then so
 \subsubsection{Subtask f}
 This task must be divided into several steps. Firstly, the data used in the calculation must be identified. In this case, it is the count of reviews and the average length of review for each user, which is not directly available. I therefore start out by calculating these attributes.
 
-In order to achieve this, I initially apply a mapping to get a paired RDD with user ID as key, and the length of the review as value. I then use \emph{aggregateByKey} to simultaneously produce the count of reviews and sum of review lengths for each user. A new mapping is then applied in order to convert this into the count of reviews and average review length by each user, by simply dividing the total length by review count.
+In order to achieve this, I initially apply a mapping to get a paired RDD with user ID as key, and the length of the review as value, again making sure to decode the base64 string. I then use \emph{aggregateByKey} to simultaneously produce the count of reviews and sum of review lengths for each user. A new mapping is then applied in order to convert this into the count of reviews and average review length by each user, by simply dividing the total length by review count.
 
 Next, I calculate the average counts and average review length for all users. I do this simulatenously using \emph{aggregate}, in a manner similar as above (but this time working on all rows instead of rows with a given key).
 
