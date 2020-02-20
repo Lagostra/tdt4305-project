@@ -149,3 +149,6 @@ metastore_db/
 
 # Delivery files
 *.zip
+
+# Project 2 output
+*/ranking_output/
