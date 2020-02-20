@@ -1,11 +1,116 @@
 \documentclass[a4paper]{article}
 \usepackage[margin=80pt]{geometry}
 
+\usepackage{listings}
+
 \title{TDT4305 -- Project 2}
 \author{Eivind Lie Andreassen}
 
 \begin{document}
 
 \maketitle
+
+\section{Running the Program}
+The Python script is written to be run using \emph{spark-submit}. It takes a single required parameter, which is the path to the \emph{reviews} data file. However, it also requires the \emph{AFINN-111.txt} file, which may be located elsewhere than assumed by the program. The location can be specified by providing the \emph{--afinn} parameter.
+
+The program also takes a number of optional parameters, all of which can be viewed by running the program with the \emph{--help} argument.
+
+
+\section{Explanation of the Solution}
+The script starts out with parsing the arguments. This includes finding the path to the data file, along with optional arguments such as number of results to return (defaults to 10), whether to normalize the sentiment polarities by length of reviews (default to false), the pre-mentioned option to specify AFINN location, and an option to use only a fraction of total dataset, allowing for faster test runs.
+
+\begin{lstlisting}[language=python]
+    reviews = sc.textFile(path) \
+        .zipWithIndex() \
+        .filter(lambda x: x[1] > 0) \
+        .map(lambda x: x[0].replace('"', '').split('\t')) \
+        .map(lambda row: tuple(
+                b64decode(row[i]).decode('utf8') if i == 3 
+                else row[i] 
+            for i in range(len(row)))
+        )
+    
+    afinn = sc.textFile(afinn_path) \
+        .map(lambda x: x.split('\t')) \
+        .map(lambda row: (row[0], int(row[1])))
+\end{lstlisting}
+
+The script then goes on to load the dataset and the AFINN set. From the dataset, the header row is removed by zipping with index, filtering out indexes under 1 (which is only the first row), and then removing the indices again. Each row is then split into separate columns. The column containing the review is decoded from \emph{base64} to \emph{utf-8}. The AFINN set is simply loaded and split into columns, with the second column being parsed as an integer.
+
+
+\begin{lstlisting}[language=python]
+    if REDUCE_DATASET:
+        count = reviews.count()
+        
+        reviews = reviews.zipWithIndex() \
+            .filter(lambda row: row[1] < count * DATASET_FRACTION) \
+            .map(lambda row: row[0])
+\end{lstlisting}
+
+Next up is an optional reduction of the dataset size. This is in order to test the program on a smaller subset of data, as the full run requires several minutes on a consumer computer. The default is to skip this reduction.
+
+\begin{lstlisting}[language=python]
+    def tokenize(review):
+        return re.sub('[^a-zA-Z ]+', '', review).lower().split()
+    
+    tokenized = reviews \
+        .map(lambda row: ((row[0], row[1], row[2]), row[3])) \
+        .flatMapValues(tokenize)
+\end{lstlisting}
+
+For the review texts, all special characters are removed, the remaining letters are converted to all lower-case, and each review is split into separate words. The RDD is remapped into a paired RDD with each row containing the review, user and business IDs as keys, and a single word from this review as value. This is achieved by first mapping to a paired RDD with the pre-mentioned key and the review text as value. \emph{flatMapValues} is then applied to tokenize the review text. This will take the value, which is our review text, apply the mapping, which tokenizes the text, and then create a new row for each value in the resulting list.
+
+
+\begin{lstlisting}[language=python]
+    if NORMALIZE_SCORES:
+        word_polarity = tokenized \
+            .map(lambda row: (row[1], row[0])) \
+            .leftOuterJoin(afinn) \
+            .map(lambda row: row[1]) \
+            .map(lambda row: (row[0], 0 if row[1] is None else row[1]))
+    else:
+        word_polarity = tokenized \
+            .map(lambda row: (row[1], row[0])) \
+            .join(afinn) \
+            .map(lambda row: row[1]) \
+            .map(lambda row: (row[0], 0 if row[1] is None else row[1]))
+\end{lstlisting}
+
+The data is now formatted so that we can join it with the AFINN data set in order to fetch polarity scores for each individual words. The program can optionally apply a normalization where final polarity scores are divided by the total number of words in the review. If normalization should be applied, all words must be kept in order to get the word counts, so a left outer join is performed, with the polarity set to 0 for words not in the AFINN set. Otherwise, an inner join is performed, throwing away all words not in the AFINN set.
+
+
+\begin{lstlisting}[language=python]
+    if NORMALIZE_SCORES:
+        review_polarity = word_polarity \ 
+            .map(lambda row: (row[0], (row[1], 1))) \
+            .reduceByKey(lambda x, y: (x[0] + y[0], x[1] + y[1])) \
+            .map(lambda row: (row[0], row[1][0] / row[1][1]))
+    else:
+        review_polarity = word_polarity \
+            .reduceByKey(lambda x, y: (x + y))
+\end{lstlisting}
+
+The polarity scores for each review can now be summed. If normalization is applied, the word count for each review is calculated simulatenously, and the polarity score is divided by the word count after summation. Otherwise, the polarity for each review is simply the sum of word polarities. The sum can easily be calculated with \emph{reduceByKey}, which applies a reduction operation over all values with the same key -- in this case, a summation. Whether or not to apply normalization is a design choice, and there are arguments for both options. Not applying normalization introduces a bias towards longer reviews, with long positive reviews scoring higher than short positive reviews, and long negative reviews scoring lower than short negative reviews. One possible interpretation is that people writing longer reviews feel stronger about the subject, which is an argument for not applying normalization.
+
+\begin{lstlisting}[language=python]
+    business_ranking = review_polarity \ 
+        .map(lambda row: (row[0][2], row[1])) \
+        .reduceByKey(lambda x, y: x + y) \
+        .sortBy(lambda row: row[1], ascending=False) \
+        .zipWithIndex() \ 
+        .filter(lambda row: row[1] < k).map(lambda row: row[0])
+\end{lstlisting}
+
+With polarity scores for each review calculated, the average score for each business can be calculated by summing over rows with the same business ID using \emph{reduceByKey}. Finally, the results are sorted in descending order using \emph{sortBy}, and the top \emph{k} results are filtered out by combining \emph{zipWithIndex} and \emph{filter}.
+
+\begin{lstlisting}[language=python]
+    business_ranking.map(lambda row: row[0]) \
+        .coalesce(1) \
+        .saveAsTextFile('ranking_output')
+\end{lstlisting}
+
+The last task is to write the resulting ranking to file. A mapping is applied so that only the business ID is included. The RDD is then coalesced to a single node, and the result is written to file using \emph{saveAsTextFile}.
+
+Both \emph{repartition} and \emph{coalesce} would achieve the same result -- namely to move all rows to a single node. However, when reducing partitions, as is done here, \emph{coalesce} is optimized. Specifically, whenever the number of nodes are reduced, \emph{coalesce} avoids a full reshuffle. Therefore, \emph{coalesce} is generally preferable in such cases.
 
 \end{document}
