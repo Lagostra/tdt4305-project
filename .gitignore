@@ -145,6 +145,7 @@ metastore_db/
 *.fls
 *.synctex.gz
 *project1.pdf
+*project2.pdf
 
 
 # Delivery files
