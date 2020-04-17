@@ -11,7 +11,7 @@
 \maketitle
 
 \section{Running the Program}
-The Python script is written to be run using \emph{spark-submit}. It takes a single required parameter, which is the path to the \emph{reviews} data file. However, it also requires the \emph{AFINN-111.txt} file, which may be located elsewhere than assumed by the program. The location can be specified by providing the \emph{--afinn} parameter.
+The Python script is written to be run using \emph{spark-submit}. It takes a single required parameter, which is the path to the \emph{reviews} data file. However, it also requires the \emph{AFINN-111.txt} and \emph{stopwords.txt} files, which may be located elsewhere than assumed by the program. The locations can be specified by providing the \emph{--afinn} and \emph{--stopwords} parameters.
 
 The program also takes a number of optional parameters, all of which can be viewed by running the program with the \emph{--help} argument.
 
@@ -33,9 +33,11 @@ The script starts out with parsing the arguments. This includes finding the path
     afinn = sc.textFile(afinn_path) \
         .map(lambda x: x.split('\t')) \
         .map(lambda row: (row[0], int(row[1])))
+    
+        stopwords = sc.textFile(stopwords_path)
 \end{lstlisting}
 
-The script then goes on to load the dataset and the AFINN set. From the dataset, the header row is removed by zipping with index, filtering out indexes under 1 (which is only the first row), and then removing the indices again. Each row is then split into separate columns. The column containing the review is decoded from \emph{base64} to \emph{utf-8}. The AFINN set is simply loaded and split into columns, with the second column being parsed as an integer.
+The script then goes on to load the dataset, the AFINN set, and the set of english stopwords. From the dataset, the header row is removed by zipping with index, filtering out indexes under 1 (which is only the first row), and then removing the indices again. Each row is then split into separate columns. The column containing the review is decoded from \emph{base64} to \emph{utf-8}. The AFINN set is simply loaded and split into columns, with the second column being parsed as an integer, and the stopwords set only needs to be loaded directly into and RDD.
 
 
 \begin{lstlisting}[language=python]
@@ -59,6 +61,15 @@ Next up is an optional reduction of the dataset size. This is in order to test t
 \end{lstlisting}
 
 For the review texts, all special characters are removed, the remaining letters are converted to all lower-case, and each review is split into separate words. The RDD is remapped into a paired RDD with each row containing the review, user and business IDs as keys, and a single word from this review as value. This is achieved by first mapping to a paired RDD with the pre-mentioned key and the review text as value. \emph{flatMapValues} is then applied to tokenize the review text. This will take the value, which is our review text, apply the mapping, which tokenizes the text, and then create a new row for each value in the resulting list.
+
+\begin{lstlisting}[language=python]
+    stopwords_removed = tokenized \
+        .map(lambda row: (row[1], row[0])) \
+        .subtractByKey(stopwords.map(lambda row: (row, row))) \
+        .map(lambda row: (row[1], row[0]))
+\end{lstlisting}
+
+The next task is to remove the stopwords. I chose to do this with a \emph{subtractByKey} operation, which means that the tokenized words first need to remapped to have the words as keys. I then use \emph{subtractByKey} to remove rows where the key is a stopword (mapping the stopwords to tuples of (stopword, stopword), since a PairedRDD is required). Finally, I map the rows back to their original placement, since this is expected by the next operation.
 
 
 \begin{lstlisting}[language=python]

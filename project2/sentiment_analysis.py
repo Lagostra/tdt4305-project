@@ -13,6 +13,7 @@ parser.add_argument('-k', type=int, default=10, dest='k', help='The number of bu
 parser.add_argument('--reduce', '-r', dest='reduce', action='store_true', help='Reduce the dataset to allow for faster test runs')
 parser.add_argument('--fraction', '-f', dest='fraction', type=int, default=0.1, help='Fraction of dataset to be used. Only applicable when --reduce is specified.')
 parser.add_argument('--afinn', '-a', dest='afinn', type=str, default='../data/AFINN-111.txt', help='Path to the AFINN file for word polarities.')
+parser.add_argument('--stopwords', '-s', dest='stopwords', type=str, default='../data/stopwords.txt', help='Path to the file with english stopwords.')
 
 args = parser.parse_args()
 
@@ -23,6 +24,7 @@ NORMALIZE_SCORES = args.normalize
 REDUCE_DATASET = args.reduce
 DATASET_FRACTION = args.fraction
 afinn_path = args.afinn
+stopwords_path = args.stopwords
 
 
 reviews = sc.textFile(path) \
@@ -35,6 +37,8 @@ reviews = sc.textFile(path) \
 afinn = sc.textFile(afinn_path) \
     .map(lambda x: x.split('\t')) \
     .map(lambda row: (row[0], int(row[1])))
+
+stopwords = sc.textFile(stopwords_path)
 
 if REDUCE_DATASET:
     count = reviews.count()
@@ -50,15 +54,20 @@ def tokenize(review):
 tokenized = reviews.map(lambda row: ((row[0], row[1], row[2]), row[3])) \
     .flatMapValues(tokenize)
 
+stopwords_removed = tokenized \
+    .map(lambda row: (row[1], row[0])) \
+    .subtractByKey(stopwords.map(lambda row: (row, row))) \
+    .map(lambda row: (row[1], row[0]))
+
 
 if NORMALIZE_SCORES:
-    word_polarity = tokenized \
+    word_polarity = stopwords_removed \
         .map(lambda row: (row[1], row[0])) \
         .leftOuterJoin(afinn) \
         .map(lambda row: row[1]) \
         .map(lambda row: (row[0], 0 if row[1] is None else row[1]))
 else:
-    word_polarity = tokenized \
+    word_polarity = stopwords_removed \
         .map(lambda row: (row[1], row[0])) \
         .join(afinn) \
         .map(lambda row: row[1]) \
