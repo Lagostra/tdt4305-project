@@ -74,13 +74,13 @@ The next task is to remove the stopwords. I chose to do this with a \emph{subtra
 
 \begin{lstlisting}[language=python]
     if NORMALIZE_SCORES:
-        word_polarity = tokenized \
+        word_polarity = stopwords_removed \
             .map(lambda row: (row[1], row[0])) \
             .leftOuterJoin(afinn) \
             .map(lambda row: row[1]) \
             .map(lambda row: (row[0], 0 if row[1] is None else row[1]))
     else:
-        word_polarity = tokenized \
+        word_polarity = stopwords_removed \
             .map(lambda row: (row[1], row[0])) \
             .join(afinn) \
             .map(lambda row: row[1]) \
